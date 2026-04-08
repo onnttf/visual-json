@@ -1,11 +1,19 @@
 import * as vscode from "vscode";
 import { resolveSchema } from "@visual-json/core";
 import { parse as parseJsonc } from "jsonc-parser";
+import { isYamlFile, parseYamlContent } from "@visual-json/yaml";
 import {
   getWebviewHtml,
   type HostToWebviewMessage,
   type WebviewToHostMessage,
 } from "./webview-utils";
+
+function parseContent(text: string, filename: string): unknown {
+  if (isYamlFile(filename)) {
+    return parseYamlContent(text);
+  }
+  return parseJsonc(text);
+}
 
 export class VisualJsonEditorProvider
   implements vscode.CustomTextEditorProvider
@@ -32,9 +40,9 @@ export class VisualJsonEditorProvider
     );
 
     let suppressNextEdit = false;
+    const filename = document.uri.path.split("/").pop() ?? "file.json";
 
     const sendContent = () => {
-      const filename = document.uri.path.split("/").pop() ?? "file.json";
       const msg: HostToWebviewMessage = {
         type: "setContent",
         json: document.getText(),
@@ -68,8 +76,11 @@ export class VisualJsonEditorProvider
           }
           case "requestSchema": {
             try {
-              const parsed = parseJsonc(msg.json);
-              const schema = await resolveSchema(parsed, msg.filename);
+              const parsed = parseContent(msg.json, msg.filename);
+              const schema = await resolveSchema(
+                parsed as Parameters<typeof resolveSchema>[0],
+                msg.filename,
+              );
               const result: HostToWebviewMessage = {
                 type: "schemaResult",
                 schema,

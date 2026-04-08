@@ -8,6 +8,11 @@ import {
 import type { JsonValue, JsonSchema } from "@visual-json/core";
 import { JsonEditor } from "@visual-json/react";
 import { parse as parseJsonc } from "jsonc-parser";
+import {
+  isYamlFile,
+  parseYamlContent,
+  stringifyYamlContent,
+} from "@visual-json/yaml";
 import { vscode } from "./vscode";
 
 const VSCODE_THEME_STYLE: CSSProperties = {
@@ -66,6 +71,7 @@ export function App() {
   const suppressEditRef = useRef(false);
   const lastJsonRef = useRef<string>("");
   const editTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filenameRef = useRef<string>("file.json");
 
   useEffect(() => {
     const handler = (event: MessageEvent<HostMessage>) => {
@@ -79,7 +85,10 @@ export function App() {
           try {
             if (msg.json === lastJsonRef.current) return;
             lastJsonRef.current = msg.json;
-            const parsed = parseJsonc(msg.json);
+            filenameRef.current = msg.filename;
+            const parsed = isYamlFile(msg.filename)
+              ? parseYamlContent(msg.json)
+              : parseJsonc(msg.json);
             setJsonValue(parsed);
             setParseError(null);
 
@@ -89,7 +98,9 @@ export function App() {
               filename: msg.filename,
             });
           } catch (err) {
-            setParseError(err instanceof Error ? err.message : "Invalid JSON");
+            setParseError(
+              err instanceof Error ? err.message : "Invalid content",
+            );
           }
           break;
         }
@@ -111,7 +122,9 @@ export function App() {
     setJsonValue(value);
     if (editTimerRef.current !== null) clearTimeout(editTimerRef.current);
     editTimerRef.current = setTimeout(() => {
-      const json = JSON.stringify(value, null, 2);
+      const json = isYamlFile(filenameRef.current)
+        ? stringifyYamlContent(value)
+        : JSON.stringify(value, null, 2);
       lastJsonRef.current = json;
       suppressEditRef.current = true;
       vscode.postMessage({ type: "edit", json });
@@ -122,7 +135,7 @@ export function App() {
     return (
       <div className="visual-json-error">
         <div className="error-icon">!</div>
-        <div className="error-title">Cannot parse JSON</div>
+        <div className="error-title">Cannot parse file</div>
         <div className="error-message">{parseError}</div>
       </div>
     );
@@ -131,7 +144,7 @@ export function App() {
   if (jsonValue === null) {
     return (
       <div className="visual-json-loading">
-        <span>Loading JSON...</span>
+        <span>Loading...</span>
       </div>
     );
   }
